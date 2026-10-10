@@ -50,7 +50,7 @@ export function breakerSequence(data,height,ratings,caps,index,type=overall(data
   return gains;
 }
 export function applyBreakers(data,height,base,caps,counts,type=overall(data,height,base).type){
-  return base.map((r,i)=>r+breakerSequence(data,height,base,caps,i,type).slice(0,counts[i]).reduce((a,b)=>a+b,0));
+  return base.map((r,i)=>r+(counts[i]?breakerSequence(data,height,base,caps,i,type).slice(0,counts[i]).reduce((a,b)=>a+b,0):0));
 }
 // AND binds within OR branches. The operator belongs to the preceding condition.
 export function predicate(requirements,ratings){

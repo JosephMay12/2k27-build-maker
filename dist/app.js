@@ -2,6 +2,7 @@ import {DISCIPLINES,TIERS,badgeTier,legalWingspans} from './rules.js';
 import {normalizeGoals,misses} from './optimizer.js';
 import {badgeInsights,badgeChanges,badgeQualifications} from './badge-insights.js';
 import {takeoverInsights,takeoverChanges} from './takeover-insights.js';
+import {specializationBranches,specializationEligibility,specializationMissing} from './specialization.js';
 const $=id=>document.getElementById(id);
 const title=s=>s.split('_').map(w=>w[0].toUpperCase()+w.slice(1)).join(' ');
 const heightLabel=h=>`${Math.floor(h/12)}′${h%12}″`;
@@ -18,7 +19,17 @@ function applyGoals(g){
   $('height').value=g.height??77;$('general').value=g.general??5;$('specialization').value=g.specialization??'auto';$('nearby').checked=g.nearby!==false;
   updateWingspanOptions(g.wingspan??'');
   for(const a of data.attrs)for(const k of ['required','ideal','priority']){const value=g[k]?.[a.index];$(`${k}-${a.index}`).value=value==null||(k==='priority'&&!+value)||(k==='required'&&+value===25)?'':value;}
-  selectedBadges=(g.badges??[]).filter(s=>data.badges.some(b=>b.badge===+s.badge));renderBadgeGoals();updateBadgeAvailability();persist();
+  selectedBadges=(g.badges??[]).filter(s=>data.badges.some(b=>b.badge===+s.badge));renderBadgeGoals();updateBadgeAvailability();updateSpecializationHelp();persist();
+}
+function specializationRule(spec){
+  return specializationBranches(data,spec).map(branch=>{
+    const text=branch.map(([i,min])=>`${data.attrs[i].label} ${min}`).join(' AND ');
+    return branch.length>1?`(${text})`:text||'No rating requirement';
+  }).join(' OR ');
+}
+function updateSpecializationHelp(){
+  const spec=$('specialization').value;
+  $('specialization-help').textContent=spec==='auto'?'Only recommends categories this build can unlock.':`Unlock: ${specializationRule(spec)}. Checked before specialization breakers.`;
 }
 function renderBadgeGoals(){
   $('required-badges').innerHTML=selectedBadges.map(s=>{const b=data.badges.find(b=>b.badge===+s.badge);return `<span class="badge-chip">${esc(b.label)} · ${title(TIERS[s.tier])}<button type="button" data-remove-badge="${s.badge}" aria-label="Remove ${esc(b.label)}">×</button></span>`;}).join('');
@@ -40,11 +51,18 @@ function requiredTokens(build,final,goals=result.goals){
 }
 function checkObserved(build,goals=result.goals){
   const saved=observations[build.id]??{};let seen=0,mismatch=0,locked=0;
+  const before=build.base.slice();
   const final=build.base.map((base,i)=>{
-    let gain=0;for(let step=0;step<build.counts[i];step++){const observed=saved[i]?.[step];if(observed!=null){seen++;if(observed!==build.sequences[i][step])mismatch++;if(observed===0)locked++;}gain+=observed??build.sequences[i][step];}return base+gain;
+    let gain=0;for(let step=0;step<build.counts[i];step++){const observed=saved[i]?.[step];if(observed!=null){seen++;if(observed!==build.sequences[i][step])mismatch++;if(observed===0)locked++;}const boost=observed??build.sequences[i][step];gain+=boost;if(step<build.pool.general[i])before[i]+=boost;}return base+gain;
   });
-  const missing=misses(data,goals,build.body.height,final),all=seen===total(build.counts)&&seen>0;
-  return {final,seen,mismatch,locked,all,missing};
+  const eligibility=specializationEligibility(data,build.spec,before);
+  const missing=[...misses(data,goals,build.body.height,final),...specializationMissing(eligibility)],all=seen===total(build.counts)&&seen>0;
+  return {final,seen,mismatch,locked,all,missing,eligibility};
+}
+function specializationPanel(build,check){
+  const e=check.eligibility;
+  const paths=e.branches.map(branch=>branch.length?branch.map(r=>`${esc(r.label)} ${r.actual} / ${r.minimum}${r.met?' (met)':' (short)'}`).join(' AND '):'No rating requirement');
+  return `<details class="specialization-panel" ${e.qualified?'':'open'}><summary>${title(build.spec)} specialization · ${e.qualified?'Rating requirements met':'Not unlocked'}</summary><p><strong>Requires:</strong> ${esc(specializationRule(build.spec))}.</p><ul>${paths.map(path=>`<li>${path}</li>`).join('')}</ul><p>Checked using builder ratings plus general breakers, before the two specialization breakers. Apply all general breakers first. Specialization breakers cannot unlock their own category. Completing specialization goals in game is still required.</p></details>`;
 }
 function recipeRows(build,final,goals=result.goals){
   const saved=observations[build.id]??{};
@@ -101,7 +119,7 @@ function adjustmentPanel(near){
     ${impact.some(c=>c.to>c.from)?`<details><summary>Badges gained or upgraded (${impact.filter(c=>c.to>c.from).length})</summary><div class="badge-list">${impact.filter(c=>c.to>c.from).map(c=>`<span>${esc(c.label)} ${tierLabel(c.from)} → ${tierLabel(c.to)}</span>`).join('')}</div></details>`:''}
     <p><strong>Takeover impact:</strong> ${takeoverImpact.some(t=>!t.to)?`Loses ${takeoverImpact.filter(t=>!t.to).map(t=>esc(t.label)).join(', ')}.`:'No specialist takeover qualifications lost.'}${takeoverImpact.some(t=>t.to)?` Gains ${takeoverImpact.filter(t=>t.to).map(t=>esc(t.label)).join(', ')}.`:''}</p>
     ${check.seen?`<div class="${check.missing.length||check.locked?'warning':'note-box'}">Observed ${check.seen}/${total(b.counts)} planned steps. ${check.missing.length||check.locked?'This adjusted recipe needs another check; an observed step is locked or a revised goal is missed.':'All revised hard goals still met.'}</div>`:''}
-    <details><summary>Complete adjusted recipe, badges, and takeovers</summary>${recipeTable(b,check.final,a.goals,check.seen)}${thresholdBadges(b,check.final)}${badgeQualificationsPanel(b,check.final)}${takeoverPanel(b,check.final)}</details>
+    <details><summary>Complete adjusted recipe, badges, and takeovers</summary>${specializationPanel(b,check)}${recipeTable(b,check.final,a.goals,check.seen)}${thresholdBadges(b,check.final)}${badgeQualificationsPanel(b,check.final)}${takeoverPanel(b,check.final)}</details>
     <div class="card-actions"><button type="button" class="button ghost" data-adjust-near="${esc(near.id)}" data-adjust-index="${index}">Use these revised goals</button><button type="button" class="text-button" data-verify="${esc(b.id)}">Verify adjusted recipe</button><button type="button" class="text-button" data-export="${esc(b.id)}">Export adjusted recipe</button></div></div>`;
   }).join('')}</section>`;
 }
@@ -121,7 +139,8 @@ function buildCard(build,index,near=false){
   <div class="card-body">${near?`<div class="warning">${esc(build.reason)}</div>`:''}${note?`<div class="${changed||check.missing.length?'warning':'note-box'}">${esc(note)}</div>`:''}
   <p>${near?'This alternative does not meet every requirement.':`${index===0?'Best found':'Another option'} for your priorities: ${ranking.length?ranking.map(x=>`${esc(data.attrs[x.i].label)} ${final[x.i]}`).join(' · '):'balanced improvements across your ideal ratings and remaining attributes'}. ${result.goals.general-build.pool.generalUsed} general and ${2-build.pool.specUsed} specialization breakers remain.`}</p>
   <div class="goals-summary">${requiredTokens(build,final)}</div>
-  ${near?`<ul class="score-list">${build.missing.map(m=>`<li>${esc(m.label)}: ${m.kind==='stat'?`${m.actual}, needs ${m.need}`:`needs ${title(TIERS[m.need])}`}</li>`).join('')}</ul>`:''}
+  ${near?`<ul class="score-list">${check.missing.map(m=>`<li>${esc(m.label)}: ${m.kind==='specialization'?esc(m.message):m.kind==='stat'?`${m.actual}, needs ${m.need}`:`needs ${title(TIERS[m.need])}`}</li>`).join('')}</ul>`:''}
+  ${specializationPanel(build,check)}
   ${near?adjustmentPanel(build):''}
   <details ${index===0&&!near?'open':''}><summary>${near?'Original near-miss recipe':'Builder recipe and breaker placements'}</summary>${recipeTable(build,final,result.goals,check.seen)}<p class="muted">General and Spec. show how many breakers to use. Rating gain shows their total boost and each step in order${check.seen?', including your observed gains':''}. One breaker can add multiple rating points; later gains can shrink as the rating rises or reaches its body cap.</p></details>
   ${thresholdBadges(build,final)}
@@ -158,13 +177,13 @@ async function runSearch(event){
 function openVerify(id){
   activeBuild=buildEntry(id)?.build;if(!activeBuild)return;
   const b=activeBuild,saved=observations[id]??{};$('verify-context').textContent=`${heightLabel(b.body.height)} ${b.body.position} · ${b.body.weight} lb · ${heightLabel(b.body.wingspan)} wingspan · ${title(b.spec)}`;
-  $('verify-rows').innerHTML=data.attrs.filter(a=>b.counts[a.index]).map(a=>{const i=a.index;return `<div class="verify-row"><strong>${esc(a.label)}<br><span class="muted">Builder: ${b.base[i]}</span></strong><div class="verify-steps">${Array.from({length:b.counts[i]},(_,step)=>`<label>Step ${step+1}<span class="projected-gain">Projected +${b.sequences[i][step]}</span><input type="number" data-observe="${i}" data-step="${step}" min="0" max="74" value="${saved[i]?.[step]??''}" placeholder="+${b.sequences[i][step]}" aria-label="${esc(a.label)} step ${step+1} observed gain"></label>`).join('')}</div></div>`;}).join('')||'<p>This build uses no breakers. Check the builder ratings and body caps in game.</p>';
+  $('verify-rows').innerHTML=data.attrs.filter(a=>b.counts[a.index]).map(a=>{const i=a.index;return `<div class="verify-row"><strong>${esc(a.label)}<br><span class="muted">Builder: ${b.base[i]}</span></strong><div class="verify-steps">${Array.from({length:b.counts[i]},(_,step)=>`<label>Step ${step+1} · ${step<b.pool.general[i]?'General':'Spec.'}<span class="projected-gain">Projected +${b.sequences[i][step]}</span><input type="number" data-observe="${i}" data-step="${step}" min="0" max="74" value="${saved[i]?.[step]??''}" placeholder="+${b.sequences[i][step]}" aria-label="${esc(a.label)} step ${step+1} observed gain"></label>`).join('')}</div></div>`;}).join('')||'<p>This build uses no breakers. Check the builder ratings and body caps in game.</p>';
   $('verify-error').hidden=true;$('verify-dialog').showModal();
 }
 function exportRecipe(id){
   const entry=buildEntry(id);if(!entry)return;
   const {build,goals,adjustment,near}=entry,check=checkObserved(build,goals);
-  const payload={dataset:data.meta,goals,originalGoals:adjustment?result.goals:undefined,changes:adjustment?.changes,requiredBadgeChanges:adjustment?.requiredBadges,takeoverChanges:near?takeoverChanges(data,near.final,check.final):undefined,build,observed:observations[id]??{},check,badgeQualifications:badgeQualifications(data,build.body.height,check.final),badgeThresholds:badgeInsights(data,build.body.height,check.final,build.caps),takeovers:takeoverInsights(data,check.final,build.caps)};
+  const payload={dataset:data.meta,specializationRules:data.specializationMeta,specializationEligibility:check.eligibility,goals,originalGoals:adjustment?result.goals:undefined,changes:adjustment?.changes,requiredBadgeChanges:adjustment?.requiredBadges,takeoverChanges:near?takeoverChanges(data,near.final,check.final):undefined,build,observed:observations[id]??{},check,badgeQualifications:badgeQualifications(data,build.body.height,check.final),badgeThresholds:badgeInsights(data,build.body.height,check.final,build.caps),takeovers:takeoverInsights(data,check.final,build.caps)};
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),link=document.createElement('a');
   link.href=URL.createObjectURL(blob);link.download=`2k27-${build.body.height}-${build.body.weight}-recipe.json`;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
 }
@@ -183,6 +202,7 @@ try{
   $('goals-form').addEventListener('submit',runSearch);$('goals-form').addEventListener('input',persist);$('goals-form').addEventListener('change',persist);
   $('height').addEventListener('change',()=>{updateBadgeAvailability();updateWingspanOptions();});
   $('wingspan').addEventListener('change',()=>updateWingspanOptions());
+  $('specialization').addEventListener('change',updateSpecializationHelp);
   $('add-badge').onclick=()=>{const s={badge:+$('badge-select').value,tier:+$('badge-tier').value};selectedBadges=selectedBadges.filter(b=>b.badge!==s.badge);selectedBadges.push(s);renderBadgeGoals();persist();};
   $('required-badges').onclick=event=>{const id=event.target.dataset.removeBadge;if(id){selectedBadges=selectedBadges.filter(b=>b.badge!==+id);renderBadgeGoals();persist();}};
   $('reset').onclick=()=>{stopSearch();applyGoals({height:77,general:5});$('form-error').hidden=true;toast('Goals reset.');};

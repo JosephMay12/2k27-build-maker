@@ -1,5 +1,6 @@
-import {DISCIPLINES,FLOOR,associated,overall,bodyCaps,legalWingspans,breakerSequence,applyBreakers,badgeTier,badgeBranches,splitPools,clamp} from './rules.js';
+import {DISCIPLINES,FLOOR,associated,overall,bodyCaps,legalWingspans,breakerSequence,applyBreakers,badgeTier,badgeBranches} from './rules.js';
 import {badgeChanges} from './badge-insights.js';
+import {specializationBranches,specializationPools,specializationEligibility,specializationMissing,unlockSpecialization} from './specialization.js';
 const sum=a=>a.reduce((x,y)=>x+y,0);
 const dot=(a,b)=>a.reduce((s,v,i)=>s+v*b[i],0);
 export function normalizeGoals(input){
@@ -60,7 +61,7 @@ function inverse(data,height,caps,target,type){
 }
 function requiredPlan(data,goals,body,caps,target,type,spec){
   const counts=Array(21).fill(0),opts=inverse(data,body.height,caps,target,type);
-  const make=c=>associated(data,body.height,c.map((n,i)=>opts[i][n]));
+  const make=c=>unlockSpecialization(data,body,associated(data,body.height,c.map((n,i)=>opts[i][n])),caps,c,spec,goals.general,type);
   let base=make(counts),price=overall(data,body.height,base).uncapped;
   for(const pool of ['spec','general']){
     const budget=pool==='spec'?2:goals.general;
@@ -69,20 +70,23 @@ function requiredPlan(data,goals,body,caps,target,type,spec){
       for(let i=0;i<21;i++){
         if(counts[i]>=5||(pool==='spec'&&data.attrs[i].discipline!==spec&&i!==7))continue;
         const c=counts.slice();c[i]++;const b=make(c);if(b.some((r,j)=>r>caps[j]))continue;
+        if(!specializationPools(data,body,b,caps,c,spec,goals.general,type).valid)continue;
         const p=overall(data,body.height,b).uncapped,saving=price-p;
         if(saving>1e-7&&(!best||saving>best.saving))best={counts:c,base:b,price:p,saving};
       }
       if(!best)break;counts.splice(0,21,...best.counts);base=best.base;price=best.price;
     }
   }
-  const pool=splitPools(data,counts,spec,goals.general);
+  const pool=specializationPools(data,body,base,caps,counts,spec,goals.general,type);
   return {body,caps,base,counts,spec,price,pool,target,type};
 }
 function finalize(data,goals,plan){
   const ovr=overall(data,plan.body.height,plan.base);const final=applyBreakers(data,plan.body.height,plan.base,plan.caps,plan.counts,ovr.type);
-  const missing=misses(data,goals,plan.body.height,final),pool=splitPools(data,plan.counts,plan.spec,goals.general);
+  const pool=specializationPools(data,plan.body,plan.base,plan.caps,plan.counts,plan.spec,goals.general,ovr.type);
+  const eligibility=specializationEligibility(data,plan.spec,pool.beforeSpecialization);
+  const missing=[...misses(data,goals,plan.body.height,final),...specializationMissing(eligibility)];
   const sequences=plan.base.map((_,i)=>breakerSequence(data,plan.body.height,plan.base,plan.caps,i,ovr.type));
-  return {...plan,ovr,final,missing,pool,sequences,valid:missing.length===0&&ovr.uncapped<=99.000001&&pool.valid&&plan.base.every((r,i)=>r<=plan.caps[i])};
+  return {...plan,ovr,final,missing,pool,sequences,eligibility,valid:missing.length===0&&ovr.uncapped<=99.000001&&pool.valid&&plan.base.every((r,i)=>r<=plan.caps[i])};
 }
 function repair(data,goals,plan){
   let p=finalize(data,goals,plan);
@@ -90,7 +94,9 @@ function repair(data,goals,plan){
   for(let pass=0;pass<8;pass++){
     let changed=false;const base=p.base.slice();
     p.target.forEach((target,i)=>{if(p.final[i]<target){base[i]+=target-p.final[i];changed=true;}});
-    if(!changed)break;p=finalize(data,goals,{...p,base:associated(data,p.body.height,base)});
+    const unlocked=unlockSpecialization(data,p.body,associated(data,p.body.height,base),p.caps,p.counts,p.spec,goals.general);
+    if(!changed&&unlocked.every((r,i)=>r===p.base[i]))break;
+    p=finalize(data,goals,{...p,base:unlocked});
   }
   return p;
 }
@@ -103,6 +109,7 @@ function fill(data,goals,seed,weights){
       if(p.base[i]>=p.caps[i])continue;
       const b=p.base.slice();b[i]++;const base=associated(data,p.body.height,b);if(base.some((r,j)=>r>p.caps[j]))continue;
       const ovr=overall(data,p.body.height,base);if(ovr.uncapped>99.000001)continue;
+      if(!specializationPools(data,p.body,base,p.caps,p.counts,p.spec,goals.general,ovr.type).valid)continue;
       const final=applyBreakers(data,p.body.height,base,p.caps,p.counts,ovr.type);if(misses(data,goals,p.body.height,final).length)continue;
       const nextScore=utility(data,goals,p.body.height,final,weights),delta=nextScore-score;
       if(delta<=0)continue;
@@ -116,7 +123,7 @@ function fill(data,goals,seed,weights){
     let best=null;
     for(let i=0;i<21;i++){
       if(p.counts[i]>=5)continue;const counts=p.counts.slice();counts[i]++;
-      if(!splitPools(data,counts,p.spec,goals.general).valid)continue;
+      if(!specializationPools(data,p.body,p.base,p.caps,counts,p.spec,goals.general,p.ovr.type).valid)continue;
       const final=applyBreakers(data,p.body.height,p.base,p.caps,counts,p.ovr.type),gain=utility(data,goals,p.body.height,final,weights)-score;
       if(gain>1e-7&&(!best||gain>best.gain))best={counts,final,gain};
     }
@@ -149,7 +156,9 @@ export function suggestAdjustments(data,input,seed){
   // Body ceilings are mandatory. Propagating cuts keeps linked attributes legal.
   let clipped=seed.base.slice();
   for(let i=0;i<21;i++)if(clipped[i]>seed.caps[i])clipped=lowerBuilder(data,height,clipped,i,seed.caps[i]);
+  clipped=unlockSpecialization(data,seed.body,clipped,seed.caps,seed.counts,seed.spec,goals.general);
   const baseline=finalize(data,goals,{...seed,base:clipped});
+  if(!baseline.pool.valid)return [];
   const modes=[{label:'Protect required badges',badgePenalty:5000},{label:'Favor your ranked stats',badgePenalty:40},{label:'Alternative rating cuts',badgePenalty:5000,avoid:[]}];
   for(const mode of modes){
     if(mode.avoid&&options[0])mode.avoid=options[0].changes.filter(c=>c.requiredTo<c.requiredFrom).map(c=>c.attribute);
@@ -166,6 +175,7 @@ export function suggestAdjustments(data,input,seed){
       for(let i=0;i<21;i++){
         if(p.base[i]<=25)continue;
         const base=lowerBuilder(data,height,p.base,i,p.base[i]-1),candidate=finalize(data,goals,{...p,base});
+        if(!candidate.pool.valid)continue;
         const saving=p.ovr.uncapped-candidate.ovr.uncapped;if(saving<=1e-9)continue;
         const nextLoss=cost(candidate),efficiency=(Math.max(0,nextLoss-loss)+.01)/saving;
         if(!best||efficiency<best.efficiency)best={p:candidate,loss:nextLoss,efficiency};
@@ -211,12 +221,17 @@ export async function optimize(data,input,progress=()=>{}){
       const possible=goals.badges.filter(s=>{const b=data.badges.find(b=>b.badge===+s.badge);return b.allowed&&height>=b.height_inches[0]&&height<=b.height_inches[1]&&badgeBranches(b.tiers[+s.tier]).some(branch=>branch.every(([,n])=>n<=99));});
       variants=targetVariants(data,{...goals,badges:possible},height).variants;
     }
+    const specs=goals.specialization==='auto'?DISCIPLINES:[goals.specialization];
+    const candidates=specs.flatMap(spec=>variants.flatMap(vector=>specializationBranches(data,spec).map(branch=>{
+      const target=vector.slice();for(const [i,min] of branch)target[i]=Math.max(target[i],min);
+      return {spec,target};
+    })));
     const unique=new Map(),maxCaps=FLOOR();
     for(const pos of data.bodies)for(const frame of pos.bodies.filter(b=>b.height_inches===height&&(goals.wingspan===null||(goals.wingspan>=b.wingspan_inches[0]&&goals.wingspan<=b.wingspan_inches[1]))))for(let weight=frame.weight_lb[0];weight<=frame.weight_lb[1];weight++)for(let wingspan=goals.wingspan??frame.wingspan_inches[0];wingspan<=(goals.wingspan??frame.wingspan_inches[1]);wingspan++){
       result.surveyed++;const body={position:pos.position,height,weight,wingspan},caps=bodyCaps(data,body);caps.forEach((c,i)=>maxCaps[i]=Math.max(c,maxCaps[i]));
       const key=caps.join(',');if(unique.has(key))continue;
-      const applicable=variants.filter(v=>v.every((n,i)=>n<=caps[i]));
-      const deficit=Math.min(...variants.map(v=>sum(v.map((n,i)=>Math.max(0,n-caps[i])))));
+      const applicable=candidates.filter(v=>v.target.every((n,i)=>n<=caps[i]));
+      const deficit=Math.min(...candidates.map(v=>sum(v.target.map((n,i)=>Math.max(0,n-caps[i])))));
       const scout=dot(caps.map((c,i)=>Math.min(c,goals.ideal[i]??99)-25),weights)-deficit*500;
       const positions=data.bodies.filter(p=>p.bodies.some(f=>f.height_inches===height&&weight>=f.weight_lb[0]&&weight<=f.weight_lb[1]&&wingspan>=f.wingspan_inches[0]&&wingspan<=f.wingspan_inches[1])).map(p=>p.position);
       unique.set(key,{body:{...body,positions},caps,variants:applicable,scout,deficit});
@@ -224,18 +239,18 @@ export async function optimize(data,input,progress=()=>{}){
     const bodies=[...unique.values()].sort((a,b)=>b.scout-a.scout);const feasible=bodies.filter(b=>b.variants.length);
     if(!feasible.length){
       const impossible=goals.required.map((r,i)=>r>maxCaps[i]?`${data.attrs[i].label}: requested ${r}, highest modeled cap ${maxCaps[i]}`:null).filter(Boolean);
-      result.explanations.push({height,message:impossible.length?impossible.join('; '):'No body at this height supports the combined required badge and rating thresholds.'});
+      const unlockImpossible=specs.filter(spec=>!specializationBranches(data,spec).some(branch=>branch.every(([i,min])=>maxCaps[i]>=min)));
+      result.explanations.push({height,message:impossible.length?impossible.join('; '):unlockImpossible.length?`No body can unlock the selected ${unlockImpossible.join(', ')} specialization at this height and wingspan. Change the specialization or body settings.`:'No body at this height supports the combined required badge, rating, and specialization unlock thresholds.'});
     }
     // Survey every body; investigate diverse promising profiles and budget plans.
     const shortlist=distinct((feasible.length?feasible:bodies).map(b=>({...b,base:FLOOR()})),36);
     const seeds=[];
     for(let n=0;n<shortlist.length;n++){
       const b=shortlist[n];result.deepSearched++;
-      for(const target of (b.variants.length?b.variants:variants).slice(0,8)){
+      for(const spec of specs)for(const {target} of (b.variants.length?b.variants:candidates).filter(v=>v.spec===spec).slice(0,8)){
         const clipped=target.map((r,i)=>Math.min(r,b.caps[i]));
         for(let type=0;type<15;type++){
-          const specs=goals.specialization==='auto'?DISCIPLINES:[goals.specialization];
-          for(const spec of specs){const p=repair(data,goals,requiredPlan(data,goals,b.body,b.caps,clipped,type,spec));const headroom=99-p.ovr.uncapped;const potential=dot(b.caps.map((r,i)=>Math.min(r,goals.ideal[i]??99)-p.final[i]),weights);p.seedScore=headroom+potential*.08-p.missing.length*500;seeds.push(p);}
+          const p=repair(data,goals,requiredPlan(data,goals,b.body,b.caps,clipped,type,spec));const headroom=99-p.ovr.uncapped;const potential=dot(b.caps.map((r,i)=>Math.min(r,goals.ideal[i]??99)-p.final[i]),weights);p.seedScore=headroom+potential*.08-p.missing.length*500;seeds.push(p);
         }
       }
       progress({height,percent:Math.round((n+1)/shortlist.length*75),message:`Comparing weight, wingspan, and breaker allocations at ${height} inches…`});

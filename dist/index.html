@@ -14,7 +14,7 @@
           <label>Height<select id="height" name="height"></select></label>
           <label>Wingspan<select id="wingspan" name="wingspan" aria-describedby="wingspan-help"><option value="">Auto — optimize for me</option></select><small id="wingspan-help" aria-live="polite">Auto chooses the best wingspan for your goals.</small></label>
           <label>General cap breakers<input id="general" name="general" type="number" min="0" max="103" value="5" required><small>Specialization adds 2 more.</small></label>
-          <label>Build specialization<select id="specialization" name="specialization"><option value="auto">Recommend a category</option></select></label>
+          <label>Build specialization<select id="specialization" name="specialization" aria-describedby="specialization-help"><option value="auto">Recommend a category</option></select><small id="specialization-help" aria-live="polite"></small></label>
         </div>
         <label class="checkbox"><input id="nearby" type="checkbox" checked> Also suggest alternatives at ±1 inch</label>
         <div class="field-legend"><strong>Required</strong> = hard minimum after breakers.<br><strong>Ideal</strong> = a goal to work toward. <strong>Priority</strong> = 1 is most important.</div>
@@ -33,7 +33,7 @@
   </div>
 </main>
 <footer>Independent NBA 2K27 planning tool. Not affiliated with 2K. Game data can change with live tuning.<span id="data-version"></span></footer>
-<dialog id="verify-dialog"><form id="verify-form"><div class="dialog-heading"><h2>Check this build in 2K</h2><button type="button" id="close-verify" class="text-button" aria-label="Close verification">✕</button></div><p id="verify-context"></p><p>Use these exact builder ratings. Enter the gain shown for each planned breaker, including 0 for a locked step. Blank steps keep the projection. Observations apply only to this recipe.</p><div id="verify-rows"></div><div id="verify-error" class="error" role="alert" hidden></div><div class="form-actions"><button class="button primary">Save observations</button><button type="button" id="clear-verification" class="text-button">Clear observations</button></div></form></dialog>
+<dialog id="verify-dialog"><form id="verify-form"><div class="dialog-heading"><h2>Check this build in 2K</h2><button type="button" id="close-verify" class="text-button" aria-label="Close verification">✕</button></div><p id="verify-context"></p><p>Use these exact builder ratings. Apply general breakers first, unlock the specialization, then apply specialization breakers. Enter the gain shown for each planned breaker, including 0 for a locked step. Blank steps keep the projection. Observations apply only to this recipe.</p><div id="verify-rows"></div><div id="verify-error" class="error" role="alert" hidden></div><div class="form-actions"><button class="button primary">Save observations</button><button type="button" id="clear-verification" class="text-button">Clear observations</button></div></form></dialog>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 <script type="module" src="app.js"></script>
 </body></html>

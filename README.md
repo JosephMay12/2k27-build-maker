@@ -4,6 +4,8 @@
 
 Plan NBA 2K27 builds using target ratings, required badges, secondary priorities, available cap breakers, and an optional fixed wingspan. Compare nearby heights, near-miss fixes, badge thresholds, and takeover qualifications.
 
+Selected and recommended specializations must meet their rating requirements before using their own breakers. Recipes show the unlock check; near-miss fixes preserve eligibility. For Shooting, both Mid Range and Three Point need at least 60. Apply general breakers first, then complete specialization goals for its restricted rewards.
+
 All searches run in your browser. Saved goals and in-game observations stay in that browser. Recommendations use projected game rules and should be checked in the live builder.
 
 This repository contains the published static website in `dist/`. Pushing updates to `main` automatically deploys them through GitHub Pages.
