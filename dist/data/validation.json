@@ -1,0 +1,41 @@
+{
+  "generated": "2026-10-10T15:51:01.133Z",
+  "bodyCaps": {
+    "matched": 21,
+    "total": 21
+  },
+  "ovr": {
+    "matched": 331,
+    "total": 331,
+    "maxError": 0.000024989613947923317
+  },
+  "breakerMeasurements": {
+    "matched": 13228,
+    "total": 13280
+  },
+  "hqSequences": {
+    "matched": 20,
+    "total": 20
+  },
+  "additionalHQ": {
+    "matchedSteps": 298,
+    "totalSteps": 315,
+    "builds": [
+      {
+        "name": "bucket_chaser",
+        "matched": 95,
+        "total": 105
+      },
+      {
+        "name": "playmaking_creator",
+        "matched": 100,
+        "total": 105
+      },
+      {
+        "name": "off_screen_shooter",
+        "matched": 103,
+        "total": 105
+      }
+    ]
+  }
+}

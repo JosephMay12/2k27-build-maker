@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#111a22"><title>2K27 Build Maker</title><meta name="description" content="Plan your NBA 2K27 build around target ratings, badges, and cap breakers."><link rel="stylesheet" href="style.css"></head>
+<body>
+<header class="topbar"><a class="brand" href="#"><span class="brand-mark">27</span><span>BUILD MAKER<small>NBA 2K27 · FUNCTIONAL MVP</small></span></a><span class="pill">Projected rules · verify in game</span></header>
+<main>
+  <section class="intro"><div><p class="eyebrow">YOUR TARGETS. A BUILD THAT FITS.</p><h1>Make every cap breaker count.</h1><p>Set your height and must-have ratings. Find a build that leaves more room for the stats and badges you care about.</p></div><button class="button ghost" id="example">Load example goals <span aria-hidden="true">↗</span></button></section>
+  <div id="loading" role="status">Loading game rules…</div>
+  <div id="app" hidden class="workspace">
+    <section class="goals-panel">
+      <form id="goals-form">
+        <div class="panel-heading"><span class="step">01</span><h2>Set your build goals</h2><button type="button" id="reset" class="text-button">Reset</button></div>
+        <div class="setup-grid">
+          <label>Height<select id="height" name="height"></select></label>
+          <label>Wingspan<select id="wingspan" name="wingspan" aria-describedby="wingspan-help"><option value="">Auto — optimize for me</option></select><small id="wingspan-help" aria-live="polite">Auto chooses the best wingspan for your goals.</small></label>
+          <label>General cap breakers<input id="general" name="general" type="number" min="0" max="103" value="5" required><small>Specialization adds 2 more.</small></label>
+          <label>Build specialization<select id="specialization" name="specialization"><option value="auto">Recommend a category</option></select></label>
+        </div>
+        <label class="checkbox"><input id="nearby" type="checkbox" checked> Also suggest alternatives at ±1 inch</label>
+        <div class="field-legend"><strong>Required</strong> = hard minimum after breakers.<br><strong>Ideal</strong> = a goal to work toward. <strong>Priority</strong> = 1 is most important.</div>
+        <div class="stat-table-wrap"><table class="stat-inputs"><thead><tr><th scope="col">Attribute</th><th scope="col">Required</th><th scope="col">Ideal</th><th scope="col">Priority</th></tr></thead><tbody id="stat-inputs"></tbody></table></div>
+        <section class="badge-goals"><h3>Required badges <span class="optional">Optional</span></h3><p>Choose minimum tiers, or let your stat priorities guide badge improvements. Qualification does not guarantee an equipped loadout.</p><div class="badge-picker"><label class="sr-only" for="badge-select">Badge</label><select id="badge-select"></select><label class="sr-only" for="badge-tier">Minimum tier</label><select id="badge-tier"><option value="0">Bronze</option><option value="1">Silver</option><option value="2" selected>Gold</option><option value="3">Hall of Fame</option></select><button type="button" id="add-badge" class="button ghost">Add</button></div><div id="required-badges" class="badge-chips"></div></section>
+        <div id="form-error" class="error" role="alert" hidden></div>
+        <div class="form-actions"><button class="button primary" id="search" type="submit">Find my builds <span aria-hidden="true">→</span></button><button class="button ghost" id="cancel" type="button" hidden>Cancel</button><button id="share" class="text-button" type="button">Copy goal link</button></div>
+      </form>
+    </section>
+    <section class="results-panel" aria-label="Build recommendations">
+      <div class="panel-heading"><span class="step">02</span><h2>Your build options</h2><span id="search-status" class="muted"></span></div>
+      <div id="progress" role="status" aria-live="polite" hidden><div class="progress-track"><span id="progress-bar"></span></div><p id="progress-message"></p></div>
+      <div id="results"><div class="empty"><div class="empty-icon" aria-hidden="true">↗</div><h3>Start with what matters to you.</h3><p>Enter required ratings, rank your secondary stats, and compare recipes for your chosen height.</p><p class="muted">Position and weight are chosen automatically. Set your wingspan or leave it on Auto.</p></div></div>
+      <details class="data-notes"><summary>How accurate is this?</summary><div id="data-notes"></div></details>
+    </section>
+  </div>
+</main>
+<footer>Independent NBA 2K27 planning tool. Not affiliated with 2K. Game data can change with live tuning.<span id="data-version"></span></footer>
+<dialog id="verify-dialog"><form id="verify-form"><div class="dialog-heading"><h2>Check this build in 2K</h2><button type="button" id="close-verify" class="text-button" aria-label="Close verification">✕</button></div><p id="verify-context"></p><p>Use these exact builder ratings. Enter the gain shown for each planned breaker, including 0 for a locked step. Blank steps keep the projection. Observations apply only to this recipe.</p><div id="verify-rows"></div><div id="verify-error" class="error" role="alert" hidden></div><div class="form-actions"><button class="button primary">Save observations</button><button type="button" id="clear-verification" class="text-button">Clear observations</button></div></form></dialog>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+<script type="module" src="app.js"></script>
+</body></html>
