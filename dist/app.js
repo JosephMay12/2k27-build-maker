@@ -1,6 +1,6 @@
 import {DISCIPLINES,TIERS,badgeTier,legalWingspans} from './rules.js';
 import {normalizeGoals,misses} from './optimizer.js';
-import {badgeInsights,badgeChanges} from './badge-insights.js';
+import {badgeInsights,badgeChanges,badgeQualifications} from './badge-insights.js';
 import {takeoverInsights,takeoverChanges} from './takeover-insights.js';
 const $=id=>document.getElementById(id);
 const title=s=>s.split('_').map(w=>w[0].toUpperCase()+w.slice(1)).join(' ');
@@ -54,6 +54,15 @@ function recipeRows(build,final,goals=result.goals){
   }).join('');
 }
 const tierLabel=tier=>tier<0?'Not qualified':title(TIERS[tier]);
+function badgeQualificationsPanel(build,final,badges=badgeQualifications(data,build.body.height,final)){
+  const branchesText=(branches,showActual)=>branches.map(branch=>{
+    const text=branch.map(r=>showActual?`${esc(r.label)} ${r.actual} (needs ${r.minimum})`:`${esc(r.label)} ${r.minimum}`).join(' AND ');
+    return branches.length>1&&branch.length>1?`(${text})`:text;
+  }).join(' OR ');
+  return `<details class="badge-qualifications"><summary>Badge qualifications (${badges.length})</summary><p>Current requirements use your final ratings after breakers${observations[build.id]?' and any observed gains':''}. AND means all listed stats are needed; OR means either path qualifies.</p>
+  <ul class="badge-qualification-list">${badges.map(b=>`<li data-badge="${b.badge}" data-tier="${b.tier}"><strong>${esc(b.label)} · ${tierLabel(b.tier)}</strong><p class="badge-current"><b>Qualifies through:</b> ${branchesText(b.qualifyingBranches,true)}.</p><p class="badge-lower">${b.lowerTier===null?'Tier below: None (Bronze is the lowest tier).':`<b>Tier below (${tierLabel(b.lowerTier)}):</b> ${branchesText(b.lowerBranches,false)}.`}</p></li>`).join('')||'<li>No badge qualifications at these ratings and height.</li>'}</ul>
+  <p>These are rating and height qualifications. Equipping badges also needs tokens and discipline slots; the slot allocation formula is unresolved.</p></details>`;
+}
 function thresholdBadges(build,final){
   const insights=badgeInsights(data,build.body.height,final,build.caps);
   const edits=changes=>changes.map(c=>`${esc(c.label)} ${c.from} → ${c.to} (${c.delta>0?'+':''}${c.delta})`).join(' and ');
@@ -92,7 +101,7 @@ function adjustmentPanel(near){
     ${impact.some(c=>c.to>c.from)?`<details><summary>Badges gained or upgraded (${impact.filter(c=>c.to>c.from).length})</summary><div class="badge-list">${impact.filter(c=>c.to>c.from).map(c=>`<span>${esc(c.label)} ${tierLabel(c.from)} → ${tierLabel(c.to)}</span>`).join('')}</div></details>`:''}
     <p><strong>Takeover impact:</strong> ${takeoverImpact.some(t=>!t.to)?`Loses ${takeoverImpact.filter(t=>!t.to).map(t=>esc(t.label)).join(', ')}.`:'No specialist takeover qualifications lost.'}${takeoverImpact.some(t=>t.to)?` Gains ${takeoverImpact.filter(t=>t.to).map(t=>esc(t.label)).join(', ')}.`:''}</p>
     ${check.seen?`<div class="${check.missing.length||check.locked?'warning':'note-box'}">Observed ${check.seen}/${total(b.counts)} planned steps. ${check.missing.length||check.locked?'This adjusted recipe needs another check; an observed step is locked or a revised goal is missed.':'All revised hard goals still met.'}</div>`:''}
-    <details><summary>Complete adjusted recipe, badges, and takeovers</summary>${recipeTable(b,check.final,a.goals,check.seen)}${thresholdBadges(b,check.final)}${takeoverPanel(b,check.final)}</details>
+    <details><summary>Complete adjusted recipe, badges, and takeovers</summary>${recipeTable(b,check.final,a.goals,check.seen)}${thresholdBadges(b,check.final)}${badgeQualificationsPanel(b,check.final)}${takeoverPanel(b,check.final)}</details>
     <div class="card-actions"><button type="button" class="button ghost" data-adjust-near="${esc(near.id)}" data-adjust-index="${index}">Use these revised goals</button><button type="button" class="text-button" data-verify="${esc(b.id)}">Verify adjusted recipe</button><button type="button" class="text-button" data-export="${esc(b.id)}">Export adjusted recipe</button></div></div>`;
   }).join('')}</section>`;
 }
@@ -102,7 +111,7 @@ function buildEntry(id){
 }
 function buildCard(build,index,near=false){
   const body=build.body,check=build.id?checkObserved(build):{final:build.final,seen:0,missing:build.missing},final=check.final;
-  const badgeList=data.badges.map(b=>({...b,tier:badgeTier(b,body.height,final)})).filter(b=>b.tier>=0);
+  const badgeList=badgeQualifications(data,body.height,final);
   const ranking=result.goals.priority.map((p,i)=>({p,i})).filter(x=>x.p).sort((a,b)=>a.p-b.p).slice(0,4);
   const note=check.seen?`Observed ${check.seen}/${total(build.counts)} planned steps. ${check.mismatch} differ from the projection.${check.locked?' A planned step is locked.':''} ${check.missing.length?'This recipe misses a hard goal.':'All hard goals still met.'}`:'';
   const label=near?'Near miss':check.all?(check.missing.length||check.locked?'Check failed':'Observed gains'):'Projected';
@@ -116,7 +125,7 @@ function buildCard(build,index,near=false){
   ${near?adjustmentPanel(build):''}
   <details ${index===0&&!near?'open':''}><summary>${near?'Original near-miss recipe':'Builder recipe and breaker placements'}</summary>${recipeTable(build,final,result.goals,check.seen)}<p class="muted">General and Spec. show how many breakers to use. Rating gain shows their total boost and each step in order${check.seen?', including your observed gains':''}. One breaker can add multiple rating points; later gains can shrink as the rating rises or reaches its body cap.</p></details>
   ${thresholdBadges(build,final)}
-  <details><summary>Badge qualifications (${badgeList.length})</summary><div class="badge-list">${badgeList.map(b=>`<span>${esc(b.label)} · ${title(TIERS[b.tier])}</span>`).join('')}</div><p>These are rating and height qualifications. Equipping badges also needs tokens and discipline slots; the slot allocation formula is unresolved.</p></details>
+  ${badgeQualificationsPanel(build,final,badgeList)}
   ${takeoverPanel(build,final)}
   <details><summary>Why this build ranks here</summary><ul class="score-list">${ranking.map(x=>`<li>Priority ${x.p}: ${esc(data.attrs[x.i].label)} reaches ${final[x.i]}${result.goals.ideal[x.i]?` toward an ideal of ${result.goals.ideal[x.i]}`:''}.</li>`).join('')}<li>Higher priorities carry more weight. Reaching related badge tiers earns a score bonus.</li><li>Ideal ratings stop adding score after they are reached. All required ratings and badges are checked first.</li><li>Search score: ${build.score?.toFixed(1)??'not feasible'}. This is the best found within a bounded search.</li></ul></details>
   ${near?'':`<div class="card-actions"><button type="button" class="button ghost" data-verify="${esc(build.id)}">Verify in 2K</button><button type="button" class="text-button" data-export="${esc(build.id)}">Export recipe</button></div>`}</div></article>`;
@@ -155,7 +164,7 @@ function openVerify(id){
 function exportRecipe(id){
   const entry=buildEntry(id);if(!entry)return;
   const {build,goals,adjustment,near}=entry,check=checkObserved(build,goals);
-  const payload={dataset:data.meta,goals,originalGoals:adjustment?result.goals:undefined,changes:adjustment?.changes,requiredBadgeChanges:adjustment?.requiredBadges,takeoverChanges:near?takeoverChanges(data,near.final,check.final):undefined,build,observed:observations[id]??{},check,badgeThresholds:badgeInsights(data,build.body.height,check.final,build.caps),takeovers:takeoverInsights(data,check.final,build.caps)};
+  const payload={dataset:data.meta,goals,originalGoals:adjustment?result.goals:undefined,changes:adjustment?.changes,requiredBadgeChanges:adjustment?.requiredBadges,takeoverChanges:near?takeoverChanges(data,near.final,check.final):undefined,build,observed:observations[id]??{},check,badgeQualifications:badgeQualifications(data,build.body.height,check.final),badgeThresholds:badgeInsights(data,build.body.height,check.final,build.caps),takeovers:takeoverInsights(data,check.final,build.caps)};
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),link=document.createElement('a');
   link.href=URL.createObjectURL(blob);link.download=`2k27-${build.body.height}-${build.body.weight}-recipe.json`;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
 }

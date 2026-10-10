@@ -3,6 +3,17 @@ import {badgeTier,badgeBranches,predicate} from './rules.js';
 const sum=values=>values.reduce((a,b)=>a+b,0);
 const changes=(data,before,after)=>data.attrs.flatMap((a,i)=>before[i]===after[i]?[]:[{attribute:i,label:a.label,from:before[i],to:after[i],delta:after[i]-before[i]}]);
 
+export function badgeQualifications(data,height,ratings){
+  const describe=branch=>branch.map(([attribute,minimum])=>({attribute,label:data.attrs[attribute].label,minimum,actual:ratings[attribute]}));
+  return data.badges.flatMap(badge=>{
+    const tier=badgeTier(badge,height,ratings);if(tier<0)return [];
+    const qualifyingBranches=badgeBranches(badge.tiers[tier]).filter(branch=>branch.every(([i,min])=>ratings[i]>=min)).map(describe);
+    const lowerTier=tier>0?tier-1:null;
+    const lowerBranches=lowerTier===null?[]:badgeBranches(badge.tiers[lowerTier]).map(describe);
+    return [{badge:badge.badge,label:badge.label,discipline:badge.discipline,tier,qualifyingBranches,lowerTier,lowerBranches}];
+  });
+}
+
 // Choose a complete AND branch. OR alternatives remain separate choices.
 export function requirementIncrease(data,requirements,ratings,caps){
   const options=badgeBranches({requirements}).map(branch=>{
